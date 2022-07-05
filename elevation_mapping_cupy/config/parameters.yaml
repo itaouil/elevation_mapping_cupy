@@ -1,6 +1,6 @@
 #### Basic parameters ########
-resolution: 0.04                                # resolution in m.
-map_length: 8                                  # map's size in m.
+resolution: 0.01                                # resolution in m.
+map_length: 4                                  # map's size in m.
 sensor_noise_factor: 0.05                       # point's noise is sensor_noise_factor*z^2 (z is distance from sensor).
 mahalanobis_thresh: 2.0                         # points outside this distance is outlier.
 outlier_variance: 0.01                          # if point is outlier, add this value to the cell.
@@ -44,6 +44,8 @@ map_frame: 'odom'                               # The map frame where the odomet
 base_frame: 'base'                              # The robot's base frame. This frame will be a center of the map.
 corrected_map_frame: 'corrected_odom'
 
+offset_world_frame: true
+
 #### Feature toggles ########
 enable_edge_sharpen: true
 enable_visibility_cleanup: true
@@ -54,7 +56,7 @@ enable_drift_corrected_TF_publishing: false
 enable_normal_color: false                      # If true, the map contains 'color' layer corresponding to normal. Add 'color' layer to the publishers setting if you want to visualize.
 
 #### Traversability filter ########
-use_chainer: false                              # Use chainer as a backend of traversability filter or pytorch. If false, it uses pytorch. pytorch requires ~2GB more GPU memory compared to chainer but runs faster.
+use_chainer: true                              # Use chainer as a backend of traversability filter or pytorch. If false, it uses pytorch. pytorch requires ~2GB more GPU memory compared to chainer but runs faster.
 weight_file: '$(rospack find elevation_mapping_cupy)/config/weights.dat'               # Weight file for traversability filter
 
 #### Upper bound ########
@@ -79,7 +81,7 @@ pointcloud_topics: ['/depth_camera_front/depth/color/points',
 #   fps:                  # Publish rate. Use smaller value than `map_acquire_fps`.
 publishers:
   elevation_map_raw:
-    layers: ['elevation', 'traversability', 'variance']
+    layers: ['elevation', 'traversability', 'variance', 'min_filter', 'smooth', 'inpaint', 'upper_bound']
     basic_layers: ['elevation', 'traversability']
     fps: 5.0
   elevation_map_recordable:

@@ -130,6 +130,7 @@ class ElevationMappingNode {
   bool enableNormalArrowPublishing_;
   bool enableDriftCorrectedTFPublishing_;
   bool useInitializerAtStart_;
+  bool offsetWorldFrame;
   double initializeTfGridSize_;
   std::atomic_int pointCloudProcessCounter_;
 };

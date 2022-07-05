@@ -60,6 +60,7 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
   nh.param<bool>("enable_normal_arrow_publishing", enableNormalArrowPublishing_, false);
   nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
   nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
+  nh.param<bool>("offset_world_frame", offsetWorldFrame, false);
 
   enablePointCloudPublishing_ = enablePointCloudPublishing;
 
@@ -270,6 +271,7 @@ void ElevationMappingNode::updatePose(const ros::TimerEvent&) {
 
   // This is to check if the robot is moving. If the robot is not moving, drift compensation is disabled to avoid creating artifacts.
   Eigen::Vector3d position(transformTf.getOrigin().x(), transformTf.getOrigin().y(), transformTf.getOrigin().z());
+
   map_.move_to(position);
   Eigen::Vector3d position3(transformTf.getOrigin().x(), transformTf.getOrigin().y(), transformTf.getOrigin().z());
   Eigen::Vector4d orientation(transformTf.getRotation().x(), transformTf.getRotation().y(), transformTf.getRotation().z(),
@@ -375,6 +377,11 @@ void ElevationMappingNode::initializeWithTF() {
     }
     p = transformationBaseToMap.translation();
     p.z() += initialize_tf_offset_[i];
+    
+    // Offset world in case it starts in the air
+    if (offsetWorldFrame) {
+      p.z() -= 0.37;
+    }
     points.push_back(p);
     i++;
   }
