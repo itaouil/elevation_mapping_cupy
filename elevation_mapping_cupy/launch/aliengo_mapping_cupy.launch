@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <launch>
+  <!-- Convert depth to pointcloud
+  <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" />
+  <node pkg="nodelet" type="nodelet" name="rgbd_pcl"
+        args="load depth_image_proc/point_cloud_xyz nodelet_pcl_manager">
+    <remap from="camera_info" to="/realsense/front/camera/depth/camera_info"/>
+    <remap from="image_rect" to="/realsense/front/camera/depth/image_rect_raw" />
+    <remap from="points" to="/points"/>
+  </node> -->
+
   <!-- Launch elevation mapping node. -->
   <node pkg="elevation_mapping_cupy" type="elevation_mapping_node" name="elevation_mapping" output="screen">
     <rosparam command="load" file="$(find elevation_mapping_cupy)/config/parameters.yaml" />
