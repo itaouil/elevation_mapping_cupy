@@ -26,6 +26,12 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
+// PCL
+#include <pcl/filters/voxel_grid.h>
+
+// Chrono
+#include <chrono>
+
 // Grid Map
 #include <grid_map_msgs/GetGridMap.h>
 #include <grid_map_msgs/GridMap.h>
@@ -40,6 +46,8 @@
 #include <elevation_map_msgs/Initialize.h>
 
 #include "elevation_mapping_cupy/elevation_mapping_wrapper.hpp"
+
+using namespace std::chrono;
 
 namespace py = pybind11;
 
@@ -125,10 +133,13 @@ class ElevationMappingNode {
   double positionAlpha_;
   double orientationAlpha_;
 
+  double voxelSize_;
+
   double recordableFps_;
   std::atomic_bool enablePointCloudPublishing_;
   bool enableNormalArrowPublishing_;
   bool enableDriftCorrectedTFPublishing_;
+  bool enableVoxelFiltering_;
   bool useInitializerAtStart_;
   bool offsetWorldFrame;
   double initializeTfGridSize_;

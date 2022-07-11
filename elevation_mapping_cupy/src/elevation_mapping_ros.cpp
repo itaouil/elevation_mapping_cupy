@@ -47,6 +47,7 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
   nh.param<std::string>("base_frame", baseFrameId_, "base");
   nh.param<std::string>("corrected_map_frame", correctedMapFrameId_, "corrected_map");
   nh.param<std::string>("initialize_method", initializeMethod_, "cubic");
+  nh.param<double>("voxel_size", voxelSize_, 0.01);
   nh.param<double>("position_lowpass_alpha", positionAlpha_, 0.2);
   nh.param<double>("orientation_lowpass_alpha", orientationAlpha_, 0.2);
   nh.param<double>("recordable_fps", recordableFps, 3.0);
@@ -61,6 +62,7 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
   nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
   nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
   nh.param<bool>("offset_world_frame", offsetWorldFrame, false);
+  nh.param<bool>("enable_voxel_filtering", enableVoxelFiltering_, false);
 
   enablePointCloudPublishing_ = enablePointCloudPublishing;
 
@@ -218,11 +220,23 @@ void ElevationMappingNode::publishMapOfIndex(int index) {
 
 void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cloud) {
   auto start = ros::Time::now();
-  pcl::PCLPointCloud2 pcl_pc;
-  pcl_conversions::toPCL(cloud, pcl_pc);
+  pcl::PCLPointCloud2::Ptr pcl_pc (new pcl::PCLPointCloud2 ());
+  pcl::PCLPointCloud2::Ptr pcl_pc_filtered (new pcl::PCLPointCloud2 ());
+  pcl_conversions::toPCL(cloud, *pcl_pc);
+
+  if (enableVoxelFiltering_) {
+    pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+    sor.setInputCloud(pcl_pc);
+    sor.setLeafSize(voxelSize_, voxelSize_, voxelSize_);
+    sor.filter(*pcl_pc_filtered);
+  }
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::fromPCLPointCloud2(pcl_pc, *pointCloud);
+  if (!enableVoxelFiltering_)
+    pcl::fromPCLPointCloud2(*pcl_pc, *pointCloud);
+  else
+    pcl::fromPCLPointCloud2(*pcl_pc_filtered, *pointCloud);
+
   tf::StampedTransform transformTf;
   std::string sensorFrameId = cloud.header.frame_id;
   auto timeStamp = cloud.header.stamp;
@@ -250,7 +264,7 @@ void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cl
     publishMapToOdom(map_.get_additive_mean_error());
   }
 
-  ROS_DEBUG_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f sec.", static_cast<int>(pointCloud->size()),
+  ROS_INFO_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f sec.", static_cast<int>(pointCloud->size()),
                      (ros::Time::now() - start).toSec());
   ROS_DEBUG_THROTTLE(1.0, "positionError: %f ", positionError);
   ROS_DEBUG_THROTTLE(1.0, "orientationError: %f ", orientationError);
@@ -480,6 +494,8 @@ void ElevationMappingNode::publishStatistics(const ros::TimerEvent&) {
 }
 
 void ElevationMappingNode::updateGridMap(const ros::TimerEvent&) {
+  auto start = high_resolution_clock::now();
+
   std::vector<std::string> layers(map_layers_all_.begin(), map_layers_all_.end());
   std::lock_guard<std::mutex> lock(mapMutex_);
   map_.get_grid_map(gridMap_, layers);
@@ -494,6 +510,11 @@ void ElevationMappingNode::updateGridMap(const ros::TimerEvent&) {
     publishNormalAsArrow(gridMap_);
   }
   isGridmapUpdated_ = true;
+
+  auto stop = high_resolution_clock::now();
+  auto duration = duration_cast<microseconds>(stop - start);
+
+  ROS_DEBUG_STREAM("The grid map update took: " << duration.count());
 }
 
 bool ElevationMappingNode::initializeMap(elevation_map_msgs::Initialize::Request& request,

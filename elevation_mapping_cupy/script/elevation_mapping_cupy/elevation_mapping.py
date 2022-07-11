@@ -4,6 +4,7 @@
 #
 import os
 import numpy as np
+import timeit
 import threading
 import subprocess
 
@@ -27,6 +28,7 @@ from .traversability_polygon import (
 )
 
 import cupy as cp
+
 
 xp = cp
 pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
@@ -275,7 +277,11 @@ class ElevationMap(object):
                 size=(self.cell_n * self.cell_n),
             )
             # calculate traversability
+            start = timeit.default_timer()
             traversability = self.traversability_filter(self.traversability_input)
+            stop = timeit.default_timer()
+            #print('Traversability took: ', stop - start)  
+            
             self.elevation_map[3][3:-3, 3:-3] = traversability.reshape(
                 (traversability.shape[2], traversability.shape[3])
             )

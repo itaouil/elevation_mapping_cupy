@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <launch>
-  <!-- Convert depth to pointcloud
-  <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" />
+  <!-- Convert depth to pointcloud -->
+  <!-- <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" />
   <node pkg="nodelet" type="nodelet" name="rgbd_pcl"
         args="load depth_image_proc/point_cloud_xyz nodelet_pcl_manager">
     <remap from="camera_info" to="/realsense/front/camera/depth/camera_info"/>
@@ -16,7 +16,7 @@
     <rosparam>
       map_frame: world
       base_frame: trunk
-      pointcloud_topics: ["/front_down/camera/depth/color/points"]
+      pointcloud_topics: ["/front_down/camera/depth/color/points_resampled"]
       initialize_frame_id: ['trunk']
       initialize_tf_offset: [0.0]
     </rosparam>
