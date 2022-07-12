@@ -28,6 +28,7 @@
 
 // PCL
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/random_sample.h>
 
 // Grid Map
 #include <grid_map_msgs/GetGridMap.h>
@@ -134,13 +135,16 @@ class ElevationMappingNode {
 
   double voxelSize_;
 
+  int sampleSize_;
+
   double recordableFps_;
-  std::atomic_bool enablePointCloudPublishing_;
-  bool enableNormalArrowPublishing_;
-  bool enableDriftCorrectedTFPublishing_;
   bool enableVoxelFiltering_;
   bool useInitializerAtStart_;
   double initializeTfGridSize_;
+  bool enablePointCloudSampling_;
+  bool enableNormalArrowPublishing_;
+  bool enableDriftCorrectedTFPublishing_;
+  std::atomic_bool enablePointCloudPublishing_;
   std::atomic_int pointCloudProcessCounter_;
 };
 

@@ -62,6 +62,8 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
   nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
   nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
   nh.param<bool>("enable_voxel_filtering", enableVoxelFiltering_, false);
+  nh.param<bool>("enable_random_sampling", enablePointCloudSampling_, false);
+  nh.param<int>("sample_size", sampleSize_, 10000);
 
   enablePointCloudPublishing_ = enablePointCloudPublishing;
 
@@ -222,6 +224,18 @@ void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cl
   pcl::PCLPointCloud2::Ptr pcl_pc (new pcl::PCLPointCloud2 ());
   pcl::PCLPointCloud2::Ptr pcl_pc_filtered (new pcl::PCLPointCloud2 ());
   pcl_conversions::toPCL(cloud, *pcl_pc);
+
+  if (enablePointCloudSampling_) {
+    auto samplingStart = high_resolution_clock::now();
+    pcl::RandomSample <pcl::PCLPointCloud2> random;
+    random.setInputCloud(pcl_pc);
+    random.setSeed (std::rand ());
+    random.setSample((unsigned int)(sampleSize_));
+    random.filter(*pcl_pc);
+    auto samplingEnd = high_resolution_clock::now();
+    ROS_INFO_STREAM("Time taken for random sampling: " << 
+      duration_cast<milliseconds>(samplingEnd - samplingStart).count() << " ms");
+  }
 
   if (enableVoxelFiltering_) {
     auto voxelStart = high_resolution_clock::now();

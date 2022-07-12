@@ -1,6 +1,7 @@
 #### Basic parameters ########
+sample_size: 50000
 voxel_size: 0.04
-resolution: 0.03                                # resolution in m.
+resolution: 0.02                                # resolution in m.
 map_length: 5                                  # map's size in m.
 sensor_noise_factor: 0.05                       # point's noise is sensor_noise_factor*z^2 (z is distance from sensor).
 mahalanobis_thresh: 2.0                         # points outside this distance is outlier.
@@ -47,6 +48,7 @@ corrected_map_frame: 'corrected_odom'
 
 #### Feature toggles ########
 enable_edge_sharpen: true
+enable_random_sampling: true
 enable_voxel_filtering: false
 enable_visibility_cleanup: true
 enable_drift_compensation: true
