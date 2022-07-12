@@ -61,7 +61,6 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
   nh.param<bool>("enable_normal_arrow_publishing", enableNormalArrowPublishing_, false);
   nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
   nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
-  nh.param<bool>("offset_world_frame", offsetWorldFrame, false);
   nh.param<bool>("enable_voxel_filtering", enableVoxelFiltering_, false);
 
   enablePointCloudPublishing_ = enablePointCloudPublishing;
@@ -219,24 +218,33 @@ void ElevationMappingNode::publishMapOfIndex(int index) {
 }
 
 void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cloud) {
-  auto start = ros::Time::now();
+  auto callbackStart = high_resolution_clock::now();
   pcl::PCLPointCloud2::Ptr pcl_pc (new pcl::PCLPointCloud2 ());
   pcl::PCLPointCloud2::Ptr pcl_pc_filtered (new pcl::PCLPointCloud2 ());
   pcl_conversions::toPCL(cloud, *pcl_pc);
 
   if (enableVoxelFiltering_) {
+    auto voxelStart = high_resolution_clock::now();
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud(pcl_pc);
     sor.setLeafSize(voxelSize_, voxelSize_, voxelSize_);
     sor.filter(*pcl_pc_filtered);
+    auto voxelEnd = high_resolution_clock::now();
+    ROS_INFO_STREAM("Time taken for voxel filtering: " << 
+      duration_cast<milliseconds>(voxelEnd - voxelStart).count() << " ms");
   }
 
+  auto pclConversionStart = high_resolution_clock::now();
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZ>);
   if (!enableVoxelFiltering_)
     pcl::fromPCLPointCloud2(*pcl_pc, *pointCloud);
   else
     pcl::fromPCLPointCloud2(*pcl_pc_filtered, *pointCloud);
+  auto pclConversionStop = high_resolution_clock::now();
+  ROS_INFO_STREAM("Time taken for pcl to pc2 casting: " << 
+    duration_cast<milliseconds>(pclConversionStop - pclConversionStart).count() << " ms");
 
+  auto transformStart = high_resolution_clock::now();
   tf::StampedTransform transformTf;
   std::string sensorFrameId = cloud.header.frame_id;
   auto timeStamp = cloud.header.stamp;
@@ -257,15 +265,27 @@ void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cl
     positionError = positionError_;
     orientationError = orientationError_;
   }
+  auto transformStop = high_resolution_clock::now();
+  ROS_INFO_STREAM("Time taken by pointcloud transform: " << 
+    duration_cast<milliseconds>(transformStop - transformStart).count() << " ms");
 
+  auto mapInputStart = high_resolution_clock::now();
   map_.input(pointCloud, transformationSensorToMap.rotation(), transformationSensorToMap.translation(), positionError, orientationError);
+  auto mapInputStop = high_resolution_clock::now();
+  ROS_INFO_STREAM("Time taken by map input: " << 
+    duration_cast<milliseconds>(mapInputStop - mapInputStart).count() << " ms");
 
   if (enableDriftCorrectedTFPublishing_) {
     publishMapToOdom(map_.get_additive_mean_error());
   }
 
-  ROS_INFO_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f sec.", static_cast<int>(pointCloud->size()),
-                     (ros::Time::now() - start).toSec());
+  auto callbackStop = high_resolution_clock::now();
+
+  ROS_INFO_STREAM("ElevationMap processed a point cloud of " << static_cast<int>(pointCloud->size()) <<
+                  " points in " << duration_cast<milliseconds>(callbackStop - callbackStart).count() << " ms \n");
+
+  // ROS_DEBUG_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f ms.", static_cast<int>(pointCloud->size()),
+                    //  (duration_cast<milliseconds>(callbackStop - callbackStart).count()));
   ROS_DEBUG_THROTTLE(1.0, "positionError: %f ", positionError);
   ROS_DEBUG_THROTTLE(1.0, "orientationError: %f ", orientationError);
   // This is used for publishing as statistics.
@@ -391,11 +411,6 @@ void ElevationMappingNode::initializeWithTF() {
     }
     p = transformationBaseToMap.translation();
     p.z() += initialize_tf_offset_[i];
-    
-    // Offset world in case it starts in the air
-    if (offsetWorldFrame) {
-      p.z() -= 0.37;
-    }
     points.push_back(p);
     i++;
   }

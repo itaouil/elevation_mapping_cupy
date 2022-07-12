@@ -17,8 +17,6 @@
       map_frame: world
       base_frame: trunk
       pointcloud_topics: ["/front_down/camera/depth/color/points_resampled"]
-      initialize_frame_id: ['trunk']
-      initialize_tf_offset: [0.0]
     </rosparam>
   </node>
 </launch>

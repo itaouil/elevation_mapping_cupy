@@ -1,6 +1,6 @@
 #### Basic parameters ########
 voxel_size: 0.04
-resolution: 0.02                                # resolution in m.
+resolution: 0.03                                # resolution in m.
 map_length: 5                                  # map's size in m.
 sensor_noise_factor: 0.05                       # point's noise is sensor_noise_factor*z^2 (z is distance from sensor).
 mahalanobis_thresh: 2.0                         # points outside this distance is outlier.
@@ -45,11 +45,9 @@ map_frame: 'odom'                               # The map frame where the odomet
 base_frame: 'base'                              # The robot's base frame. This frame will be a center of the map.
 corrected_map_frame: 'corrected_odom'
 
-offset_world_frame: true
-
 #### Feature toggles ########
 enable_edge_sharpen: true
-enable_voxel_filtering: true
+enable_voxel_filtering: false
 enable_visibility_cleanup: true
 enable_drift_compensation: true
 enable_overlap_clearance: false

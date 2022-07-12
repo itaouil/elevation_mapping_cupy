@@ -31,7 +31,11 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+// Chrono
+#include <chrono>
+
 namespace py = pybind11;
+using namespace std::chrono;
 
 namespace elevation_mapping_cupy {
 

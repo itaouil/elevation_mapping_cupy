@@ -3,6 +3,7 @@
 # Licensed under the MIT license. See LICENSE file in the project root for details.
 #
 import os
+import time
 import numpy as np
 import timeit
 import threading
@@ -227,6 +228,12 @@ class ElevationMap(object):
         error_cnt = cp.array([0], dtype=cp.float32)
         with self.map_lock:
             self.shift_translation_to_map_center(t)
+
+            # GPU benchmarking variables
+            start_gpu = cp.cuda.Event()
+            end_gpu = cp.cuda.Event()
+
+            start_gpu.record()
             self.error_counting_kernel(
                 self.elevation_map,
                 points,
@@ -239,6 +246,13 @@ class ElevationMap(object):
                 error_cnt,
                 size=(points.shape[0]),
             )
+            end_cpu = time.perf_counter()
+            end_gpu.record()
+            end_gpu.synchronize()
+            t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+            print("Time taken by error counting (GPU): ", t_gpu, "ms")
+
+            start_gpu.record()
             if (
                 self.param.enable_drift_compensation
                 and error_cnt > self.param.min_height_drift_cnt
@@ -251,6 +265,13 @@ class ElevationMap(object):
                 self.additive_mean_error += self.mean_error
                 if np.abs(self.mean_error) < self.param.max_drift:
                     self.elevation_map[0] += self.mean_error * self.param.drift_compensation_alpha
+            end_cpu = time.perf_counter()
+            end_gpu.record()
+            end_gpu.synchronize()
+            t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+            print("Time taken by drift compensation (GPU): ", t_gpu, "ms")
+
+            start_gpu.record()
             self.add_points_kernel(
                 points,
                 cp.array([0.0]),
@@ -263,11 +284,23 @@ class ElevationMap(object):
                 size=(points.shape[0]),
             )
             self.average_map_kernel(self.new_map, self.elevation_map, size=(self.cell_n * self.cell_n))
+            end_cpu = time.perf_counter()
+            end_gpu.record()
+            end_gpu.synchronize()
+            t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+            print("Time taken by height update & ray casting (GPU): ", t_gpu, "ms")
 
+            start_gpu.record()
             if self.param.enable_overlap_clearance:
                 self.clear_overlap_map(t)
+            end_cpu = time.perf_counter()
+            end_gpu.record()
+            end_gpu.synchronize()
+            t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+            print("Time taken by overlap clearance (GPU): ", t_gpu, "ms")
 
             # dilation before traversability_filter
+            start_gpu.record()
             self.traversability_input *= 0.0
             self.dilation_filter_kernel(
                 self.elevation_map[5],
@@ -277,17 +310,25 @@ class ElevationMap(object):
                 size=(self.cell_n * self.cell_n),
             )
             # calculate traversability
-            start = timeit.default_timer()
             traversability = self.traversability_filter(self.traversability_input)
-            stop = timeit.default_timer()
-            #print('Traversability took: ', stop - start)  
+            end_cpu = time.perf_counter()
+            end_gpu.record()
+            end_gpu.synchronize()
+            t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+            print("Time taken by traversability filter (GPU): ", t_gpu, "ms")
             
             self.elevation_map[3][3:-3, 3:-3] = traversability.reshape(
                 (traversability.shape[2], traversability.shape[3])
             )
 
         # calculate normal vectors
+        start_gpu.record()
         self.update_normal(self.traversability_input)
+        end_cpu = time.perf_counter()
+        end_gpu.record()
+        end_gpu.synchronize()
+        t_gpu = cp.cuda.get_elapsed_time(start_gpu, end_gpu)
+        print("Time taken by normal computation (GPU): ", t_gpu, "ms")
 
     def clear_overlap_map(self, t):
         # Clear overlapping area around center
@@ -531,7 +572,7 @@ if __name__ == "__main__":
     t = xp.random.rand(3)
     print(R, t)
     param = Parameter(
-        use_chainer=False, weight_file="../config/weights.dat", plugin_config_file="../config/plugin_config.yaml"
+        use_chainer=True, weight_file="../config/weights.dat", plugin_config_file="../config/plugin_config.yaml"
     )
     elevation = ElevationMap(param)
     layers = ["elevation", "variance", "traversability", "min_filter", "smooth", "inpaint"]

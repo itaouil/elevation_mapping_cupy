@@ -29,9 +29,6 @@
 // PCL
 #include <pcl/filters/voxel_grid.h>
 
-// Chrono
-#include <chrono>
-
 // Grid Map
 #include <grid_map_msgs/GetGridMap.h>
 #include <grid_map_msgs/GridMap.h>
@@ -47,9 +44,11 @@
 
 #include "elevation_mapping_cupy/elevation_mapping_wrapper.hpp"
 
-using namespace std::chrono;
+// Chrono
+#include <chrono>
 
 namespace py = pybind11;
+using namespace std::chrono;
 
 namespace elevation_mapping_cupy {
 
@@ -141,7 +140,6 @@ class ElevationMappingNode {
   bool enableDriftCorrectedTFPublishing_;
   bool enableVoxelFiltering_;
   bool useInitializerAtStart_;
-  bool offsetWorldFrame;
   double initializeTfGridSize_;
   std::atomic_int pointCloudProcessCounter_;
 };
