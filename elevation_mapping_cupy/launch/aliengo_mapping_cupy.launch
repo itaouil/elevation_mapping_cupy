@@ -1,14 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <launch>
-  <!-- Convert depth to pointcloud -->
-  <!-- <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" />
-  <node pkg="nodelet" type="nodelet" name="rgbd_pcl"
+  <!-- Convert depth to pointcloud (D435 camera) -->
+  <!-- <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" /> -->
+  <!-- <node pkg="nodelet" type="nodelet" name="rgbd_pcl_d435"
         args="load depth_image_proc/point_cloud_xyz nodelet_pcl_manager">
     <remap from="camera_info" to="/realsense/front/camera/depth/camera_info"/>
     <remap from="image_rect" to="/realsense/front/camera/depth/image_rect_raw" />
-    <remap from="points" to="/points"/>
+    <remap from="points" to="/points_d435"/>
   </node> -->
+
+  <!-- Convert depth to pointcloud (D405 camera) -->
+  <node pkg="nodelet" type="nodelet" name="nodelet_pcl_manager" args="manager" />
+  <node pkg="nodelet" type="nodelet" name="rgbd_pcl_d405"
+        args="load depth_image_proc/point_cloud_xyz nodelet_pcl_manager">
+    <remap from="camera_info" to="/realsense/down/camera/depth/camera_info"/>
+    <remap from="image_rect" to="/realsense/down/camera/depth/image_rect_raw" />
+    <remap from="points" to="/points_d405"/>
+  </node>
 
   <!-- Launch elevation mapping node. -->
   <node pkg="elevation_mapping_cupy" type="elevation_mapping_node" name="elevation_mapping" output="screen">
@@ -16,7 +25,7 @@
     <rosparam>
       map_frame: world
       base_frame: trunk
-      pointcloud_topics: ["/front_down/camera/depth/color/points_resampled"]
+      pointcloud_topics: ["/points", "/points_d405"]
     </rosparam>
   </node>
 </launch>

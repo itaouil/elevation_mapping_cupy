@@ -28,47 +28,64 @@ ElevationMappingNode::ElevationMappingNode(ros::NodeHandle& nh)
       positionAlpha_(0.1),
       orientationAlpha_(0.1),
       enablePointCloudPublishing_(false),
-      isGridmapUpdated_(false) {
+      isGridmapUpdated_(false),
+      setDepthCameraInfo_(false) {
   nh_ = nh;
   map_.initialize(nh_);
-  std::string pose_topic, map_frame;
   XmlRpc::XmlRpcValue publishers;
-  std::vector<std::string> pointcloud_topics;
+  std::string pose_topic, map_frame;
   std::vector<std::string> map_topics;
+  std::vector<std::string> pointcloudTopics;
+  double enablePointCloudPublishing(false);
   double recordableFps, updateVarianceFps, timeInterval, updatePoseFps, updateGridMapFps, publishStatisticsFps;
-  bool enablePointCloudPublishing(false);
 
-  nh.param<std::vector<std::string>>("pointcloud_topics", pointcloud_topics, {"points"});
+  nh.param<int>("meanK", meanK_, 50);
   nh.getParam("publishers", publishers);
-  nh.param<std::vector<std::string>>("initialize_frame_id", initialize_frame_id_, {"base"});
-  nh.param<std::vector<double>>("initialize_tf_offset", initialize_tf_offset_, {0.0});
-  nh.param<std::string>("pose_topic", pose_topic, "pose");
-  nh.param<std::string>("map_frame", mapFrameId_, "map");
-  nh.param<std::string>("base_frame", baseFrameId_, "base");
-  nh.param<std::string>("corrected_map_frame", correctedMapFrameId_, "corrected_map");
-  nh.param<std::string>("initialize_method", initializeMethod_, "cubic");
-  nh.param<double>("voxel_size", voxelSize_, 0.01);
-  nh.param<double>("position_lowpass_alpha", positionAlpha_, 0.2);
-  nh.param<double>("orientation_lowpass_alpha", orientationAlpha_, 0.2);
-  nh.param<double>("recordable_fps", recordableFps, 3.0);
-  nh.param<double>("update_variance_fps", updateVarianceFps, 1.0);
-  nh.param<double>("time_interval", timeInterval, 0.1);
-  nh.param<double>("update_pose_fps", updatePoseFps, 10.0);
-  nh.param<double>("initialize_tf_grid_size", initializeTfGridSize_, 0.5);
-  nh.param<double>("map_acquire_fps", updateGridMapFps, 5.0);
-  nh.param<double>("publish_statistics_fps", publishStatisticsFps, 1.0);
-  nh.param<bool>("enable_pointcloud_publishing", enablePointCloudPublishing, false);
-  nh.param<bool>("enable_normal_arrow_publishing", enableNormalArrowPublishing_, false);
-  nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
-  nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
-  nh.param<bool>("enable_voxel_filtering", enableVoxelFiltering_, false);
-  nh.param<bool>("enable_random_sampling", enablePointCloudSampling_, false);
+  nh.param<double>("stdDevK", stdDevK_, 1.0);
   nh.param<int>("sample_size", sampleSize_, 10000);
+  nh.param<double>("voxel_size", voxelSize_, 0.01);
+  nh.param<double>("time_interval", timeInterval, 0.1);
+  nh.param<std::string>("map_frame", mapFrameId_, "map");
+  nh.param<std::string>("pose_topic", pose_topic, "pose");
+  nh.param<double>("recordable_fps", recordableFps, 3.0);
+  nh.param<double>("update_pose_fps", updatePoseFps, 10.0);
+  nh.param<std::string>("base_frame", baseFrameId_, "base");
+  nh.param<int>("legs_safety_region", legsSafetyRegion_, 150);
+  nh.param<double>("map_acquire_fps", updateGridMapFps, 5.0);
+  nh.param<double>("update_variance_fps", updateVarianceFps, 1.0);
+  nh.param<double>("position_lowpass_alpha", positionAlpha_, 0.2);
+  nh.param<double>("publish_statistics_fps", publishStatisticsFps, 1.0);
+  nh.param<double>("orientation_lowpass_alpha", orientationAlpha_, 0.2);
+  nh.param<std::string>("initialize_method", initializeMethod_, "cubic");
+  nh.param<bool>("enable_voxel_filtering", enableVoxelFiltering_, false);
+  nh.param<double>("initialize_tf_grid_size", initializeTfGridSize_, 0.5);
+  nh.param<bool>("use_initializer_at_start", useInitializerAtStart_, false);
+  nh.param<bool>("enable_random_sampling", enablePointCloudSampling_, false);
+  nh.param<bool>("print_routines_runtimes", printRoutinesRuntimes_, false);
+  nh.param<std::string>("corrected_map_frame", correctedMapFrameId_, "corrected_map");
+  nh.param<std::vector<double>>("initialize_tf_offset", initialize_tf_offset_, {0.0});
+  nh.param<bool>("enable_statistical_filtering", enableStatisticalFiltering_, false);
+  // nh.param<bool>("enable_pointcloud_publishing", enablePointCloudPublishing, false);
+  nh.param<bool>("enable_normal_arrow_publishing", enableNormalArrowPublishing_, false);
+  nh.param<std::string>("depth_camera_info", depthCameraInfoTopic_, "camera/depth/info");
+  nh.param<std::vector<std::string>>("pointcloud_topics", pointcloudTopics, {"points"});
+  nh.param<std::vector<std::string>>("initialize_frame_id", initialize_frame_id_, {"base"});
+  nh.param<std::vector<std::string>>("leg_pointcloud_topics", legPointcloudTopics_, {"points"});
+  nh.param<bool>("enable_drift_corrected_TF_publishing", enableDriftCorrectedTFPublishing_, false);
 
   enablePointCloudPublishing_ = enablePointCloudPublishing;
 
-  for (const auto& pointcloud_topic : pointcloud_topics) {
-    ros::Subscriber sub = nh_.subscribe(pointcloud_topic, 1, &ElevationMappingNode::pointcloudCallback, this);
+  // depth camera info subscriber (for post processing)
+  cameraInfoSub_ = nh_.subscribe(depthCameraInfoTopic_, 1, &ElevationMappingNode::setDepthCameraInfo, this);
+
+  // leg filtered pointcloud
+  filteredPointCloud = nh_.advertise<sensor_msgs::PointCloud2>("/filtered_leg_cloud", 10);
+
+  // pointcloud topics subscribers (in case there is more than one)
+  for (const auto& pointcloudTopic : pointcloudTopics) {
+    ros::Subscriber sub = nh_.subscribe(pointcloudTopic, 
+                                        1, 
+                                        &ElevationMappingNode::pointcloudCallback, this);
     pointcloudSubs_.push_back(sub);
   }
 
@@ -219,50 +236,213 @@ void ElevationMappingNode::publishMapOfIndex(int index) {
   mapPubs_[index].publish(msg);
 }
 
-void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cloud) {
-  auto callbackStart = high_resolution_clock::now();
-  pcl::PCLPointCloud2::Ptr pcl_pc (new pcl::PCLPointCloud2 ());
-  pcl::PCLPointCloud2::Ptr pcl_pc_filtered (new pcl::PCLPointCloud2 ());
-  pcl_conversions::toPCL(cloud, *pcl_pc);
+void ElevationMappingNode::setDepthCameraInfo(const sensor_msgs::CameraInfo& camInfo) {
+  if (!setDepthCameraInfo_) {
+    depthCameraInfo_ = camInfo;
+    setDepthCameraInfo_ = true;
+    // pcm_.fromCameraInfo(camInfo);
+    ROS_INFO("Set depth camera info");
+  }
+}
 
+void ElevationMappingNode::filterLegsFromPointcloud(pcl::PCLPointCloud2::Ptr cloud, const ros::Time& timeStamp) {
+  // Get front feet and lowerlegs pose in base frame
+  std::vector<tf::StampedTransform> transforms;
+  tf::StampedTransform transformationLFToDepthCamera;
+  tf::StampedTransform transformationRFToDepthCamera;
+  tf::StampedTransform transformationLFLWLToDepthCamera;
+  tf::StampedTransform transformationRFLWLToDepthCamera;
+  std::string depthCameraFrame = "realsense/down/camera_color_optical_frame";
+
+  try {
+    transformListener_.waitForTransform(depthCameraFrame, "lf_foot", timeStamp, ros::Duration(1.0));
+    transformListener_.lookupTransform(depthCameraFrame, "lf_foot", timeStamp, transformationLFToDepthCamera);
+    transformListener_.waitForTransform(depthCameraFrame, "lf_lowerleg", timeStamp, ros::Duration(1.0));
+    transformListener_.lookupTransform(depthCameraFrame, "lf_lowerleg", timeStamp, transformationLFLWLToDepthCamera);
+
+    transformListener_.waitForTransform(depthCameraFrame, "rf_foot", timeStamp, ros::Duration(1.0));
+    transformListener_.lookupTransform(depthCameraFrame, "rf_foot", timeStamp, transformationRFToDepthCamera);
+    transformListener_.waitForTransform(depthCameraFrame, "rf_lowerleg", timeStamp, ros::Duration(1.0));
+    transformListener_.lookupTransform(depthCameraFrame, "rf_lowerleg", timeStamp, transformationRFLWLToDepthCamera);
+  } catch (tf::TransformException& ex) {
+    ROS_ERROR("%s", ex.what());
+    return;
+  }
+
+  transforms.push_back(transformationLFToDepthCamera);
+  transforms.push_back(transformationRFToDepthCamera);
+  transforms.push_back(transformationLFLWLToDepthCamera);
+  transforms.push_back(transformationRFLWLToDepthCamera);
+
+  // Project obtained poses in the depth map
+  std::vector<cv::Point3d> objectPoints;
+  for (uint8_t x = 0; x < 4; x++) {
+    objectPoints.push_back(cv::Point3d(double(transforms[x].getOrigin().x()),
+                                       double(transforms[x].getOrigin().y()),
+                                       double(transforms[x].getOrigin().z())));
+  }
+
+  // Populate intrinsic matrix
+  cv::Mat K(3,3,cv::DataType<double>::type);
+  K.at<double>(0,0) = double(depthCameraInfo_.K[0]);
+  K.at<double>(0,1) = double(depthCameraInfo_.K[1]);
+  K.at<double>(0,2) = double(depthCameraInfo_.K[2]);
+  K.at<double>(1,0) = double(depthCameraInfo_.K[3]);
+  K.at<double>(1,1) = double(depthCameraInfo_.K[4]);
+  K.at<double>(1,2) = double(depthCameraInfo_.K[5]);
+  K.at<double>(2,0) = double(depthCameraInfo_.K[6]);
+  K.at<double>(2,1) = double(depthCameraInfo_.K[7]);
+  K.at<double>(2,2) = double(depthCameraInfo_.K[8]);
+
+  // Populate zero rotation vector
+  cv::Mat rVec(3, 1, cv::DataType<double>::type); 
+  rVec.at<double>(0) = 0.0;
+  rVec.at<double>(1) = 0.0;
+  rVec.at<double>(2) = 0.0;
+
+  // Populate zero translation vector
+  cv::Mat tVec(3, 1, cv::DataType<double>::type);
+  tVec.at<double>(0) = 0.0;
+  tVec.at<double>(1) = 0.0;
+  tVec.at<double>(2) = 0.0;
+
+  // Create zero distortion
+  cv::Mat distCoeffs(4, 1, cv::DataType<double>::type);
+  distCoeffs.at<double>(0) = 0.0;
+  distCoeffs.at<double>(1) = 0.0;
+  distCoeffs.at<double>(2) = 0.0;
+  distCoeffs.at<double>(3) = 0.0;
+
+  std::vector<cv::Point2d> projectedPoints;
+  cv::projectPoints(objectPoints, rVec, tVec, K, distCoeffs, projectedPoints);
+
+  // Obtain points lying in the segment connecting
+  // the feet and their lowerleg components
+  cv::Mat legRegions = cv::Mat::zeros(cv::Size(848,480), CV_8UC1);
+  cv::LineIterator lfLineIt(legRegions, projectedPoints[0], projectedPoints[2], 8);
+  cv::LineIterator rfLineIt(legRegions, projectedPoints[1], projectedPoints[3], 8);
+
+  // Find points belonging to the shin segment of the left foot
+  for(int i = 0; i < lfLineIt.count; i++, ++lfLineIt)
+  {
+    cv::Point lfPt= lfLineIt.pos();
+    cv::circle(legRegions, lfPt, legsSafetyRegion_, cv::Scalar(255, 255, 255), cv::FILLED, cv::LINE_8);
+  }
+
+  // Find points belonging to the shin segment of the right foot
+  for(int i = 0; i < rfLineIt.count; i++, ++rfLineIt)
+  {
+    cv::Point rfPt= rfLineIt.pos();
+    cv::circle(legRegions, rfPt, legsSafetyRegion_, cv::Scalar(255, 255, 255), cv::FILLED, cv::LINE_8);
+  }
+ 
+  // Convert PCL pointcloud
+  pcl::PointCloud<pcl::PointXYZ>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZ>);
+  pcl::fromPCLPointCloud2(*cloud, *pointCloud);
+
+  // Project pointcloud to the image plane
+  std::vector<cv::Point3d> pointcloudPoints;
+  std::vector<cv::Point2d> projectedPointcloudPoints;
+  for (const auto& point : pointCloud->points) {
+    pointcloudPoints.push_back(cv::Point3d(double(point.x),
+                                           double(point.y),
+                                           double(point.z)));
+  }
+  cv::projectPoints(pointcloudPoints, rVec, tVec, K, distCoeffs, projectedPointcloudPoints);
+
+  // Populate outliers indices
+  pcl::PointIndices::Ptr outliers(new pcl::PointIndices());
+  for (uint idx = 0; idx < projectedPointcloudPoints.size(); idx++) {
+    const auto& point = projectedPointcloudPoints[idx];
+
+    if (std::isnan(point.x) || std::isnan(point.y))
+      continue;
+
+    if (legRegions.at<bool>(int(point.y), int(point.x))) {
+      outliers->indices.push_back(idx);
+    }
+  }
+
+  ROS_INFO_STREAM("Number of inputs: " << projectedPointcloudPoints.size());
+  ROS_INFO_STREAM("Number of outliers: " << outliers->indices.size());
+  ROS_INFO_STREAM("Header: " << cloud->header);
+  
+  // Remove outliers
+  pcl::ExtractIndices<pcl::PCLPointCloud2> extract;
+  extract.setInputCloud(cloud);
+  extract.setIndices(outliers);
+  extract.setNegative(true);
+  extract.filter(*cloud);
+}
+
+void ElevationMappingNode::pointcloudCallback(const ros::MessageEvent<sensor_msgs::PointCloud2 const>& pointcloudEvent) {
+  auto callbackStart = high_resolution_clock::now();
+
+  const sensor_msgs::PointCloud2ConstPtr& cloud = pointcloudEvent.getMessage();
+  const std::string& pointcloudTopic = pointcloudEvent.getConnectionHeader()["topic"];
+
+  pcl::PCLPointCloud2::Ptr pcl_pc (new pcl::PCLPointCloud2 ());
+  pcl_conversions::toPCL(*cloud, *pcl_pc);
+
+  const auto it = std::find(legPointcloudTopics_.begin(), 
+                    legPointcloudTopics_.end(),
+                    pointcloudTopic);
+  const bool filterLegs = (it != legPointcloudTopics_.end()) ? true : false;
+
+  auto timeStamp = cloud->header.stamp;
+  auto legFilteringStart = high_resolution_clock::now();
+  if (filterLegs) {
+    if (!setDepthCameraInfo_)
+      return;
+
+    filterLegsFromPointcloud(pcl_pc, timeStamp);
+
+    sensor_msgs::PointCloud2 ultimate;
+    pcl::PCLPointCloud2 cloud_filtered = *pcl_pc;
+    pcl_conversions::moveFromPCL(cloud_filtered, ultimate);
+    filteredPointCloud.publish(ultimate);
+  }
+  auto legFilteringEnd = high_resolution_clock::now();
+
+  // Do not sample pointcloud if legs are visible
+  auto samplingStart = high_resolution_clock::now();
   if (enablePointCloudSampling_) {
-    auto samplingStart = high_resolution_clock::now();
     pcl::RandomSample <pcl::PCLPointCloud2> random;
     random.setInputCloud(pcl_pc);
     random.setSeed (std::rand ());
     random.setSample((unsigned int)(sampleSize_));
     random.filter(*pcl_pc);
-    auto samplingEnd = high_resolution_clock::now();
-    ROS_INFO_STREAM("Time taken for random sampling: " << 
-      duration_cast<milliseconds>(samplingEnd - samplingStart).count() << " ms");
   }
+  auto samplingEnd = high_resolution_clock::now();
 
+  auto voxelStart = high_resolution_clock::now();
   if (enableVoxelFiltering_) {
-    auto voxelStart = high_resolution_clock::now();
     pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
     sor.setInputCloud(pcl_pc);
     sor.setLeafSize(voxelSize_, voxelSize_, voxelSize_);
-    sor.filter(*pcl_pc_filtered);
-    auto voxelEnd = high_resolution_clock::now();
-    ROS_INFO_STREAM("Time taken for voxel filtering: " << 
-      duration_cast<milliseconds>(voxelEnd - voxelStart).count() << " ms");
+    sor.filter(*pcl_pc);
   }
+  auto voxelEnd = high_resolution_clock::now();
+
+  auto statisticalStart = high_resolution_clock::now();
+  if (enableStatisticalFiltering_) {
+    pcl::StatisticalOutlierRemoval<pcl::PCLPointCloud2> sor;
+    sor.setInputCloud(pcl_pc);
+    sor.setMeanK(meanK_);
+    sor.setStddevMulThresh(stdDevK_);
+    sor.filter (*pcl_pc);
+  }
+  auto statisticalEnd = high_resolution_clock::now();
 
   auto pclConversionStart = high_resolution_clock::now();
   pcl::PointCloud<pcl::PointXYZ>::Ptr pointCloud(new pcl::PointCloud<pcl::PointXYZ>);
-  if (!enableVoxelFiltering_)
-    pcl::fromPCLPointCloud2(*pcl_pc, *pointCloud);
-  else
-    pcl::fromPCLPointCloud2(*pcl_pc_filtered, *pointCloud);
+  pcl::fromPCLPointCloud2(*pcl_pc, *pointCloud);
   auto pclConversionStop = high_resolution_clock::now();
-  ROS_INFO_STREAM("Time taken for pcl to pc2 casting: " << 
-    duration_cast<milliseconds>(pclConversionStop - pclConversionStart).count() << " ms");
 
   auto transformStart = high_resolution_clock::now();
   tf::StampedTransform transformTf;
-  std::string sensorFrameId = cloud.header.frame_id;
-  auto timeStamp = cloud.header.stamp;
   Eigen::Affine3d transformationSensorToMap;
+  std::string sensorFrameId = cloud->header.frame_id;
   try {
     transformListener_.waitForTransform(mapFrameId_, sensorFrameId, timeStamp, ros::Duration(1.0));
     transformListener_.lookupTransform(mapFrameId_, sensorFrameId, timeStamp, transformTf);
@@ -280,14 +460,10 @@ void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cl
     orientationError = orientationError_;
   }
   auto transformStop = high_resolution_clock::now();
-  ROS_INFO_STREAM("Time taken by pointcloud transform: " << 
-    duration_cast<milliseconds>(transformStop - transformStart).count() << " ms");
 
   auto mapInputStart = high_resolution_clock::now();
   map_.input(pointCloud, transformationSensorToMap.rotation(), transformationSensorToMap.translation(), positionError, orientationError);
   auto mapInputStop = high_resolution_clock::now();
-  ROS_INFO_STREAM("Time taken by map input: " << 
-    duration_cast<milliseconds>(mapInputStop - mapInputStart).count() << " ms");
 
   if (enableDriftCorrectedTFPublishing_) {
     publishMapToOdom(map_.get_additive_mean_error());
@@ -295,15 +471,40 @@ void ElevationMappingNode::pointcloudCallback(const sensor_msgs::PointCloud2& cl
 
   auto callbackStop = high_resolution_clock::now();
 
-  ROS_INFO_STREAM("ElevationMap processed a point cloud of " << static_cast<int>(pointCloud->size()) <<
-                  " points in " << duration_cast<milliseconds>(callbackStop - callbackStart).count() << " ms \n");
-
-  // ROS_DEBUG_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f ms.", static_cast<int>(pointCloud->size()),
-                    //  (duration_cast<milliseconds>(callbackStop - callbackStart).count()));
+  ROS_DEBUG_THROTTLE(1.0, "ElevationMap processed a point cloud (%i points) in %f ms.", static_cast<int>(pointCloud->size()),
+                     (duration_cast<milliseconds>(callbackStop - callbackStart).count()));
   ROS_DEBUG_THROTTLE(1.0, "positionError: %f ", positionError);
   ROS_DEBUG_THROTTLE(1.0, "orientationError: %f ", orientationError);
+
   // This is used for publishing as statistics.
   pointCloudProcessCounter_++;
+
+  // Print statistics or not
+  if (printRoutinesRuntimes_) {
+    ROS_INFO_STREAM("Time taken for leg filtering: " << 
+      duration_cast<milliseconds>(legFilteringEnd - legFilteringStart).count() << " ms");
+
+    ROS_INFO_STREAM("Time taken for random sampling: " << 
+      duration_cast<milliseconds>(samplingEnd - samplingStart).count() << " ms");
+    
+    ROS_INFO_STREAM("Time taken for voxel filtering: " << 
+      duration_cast<milliseconds>(voxelEnd - voxelStart).count() << " ms");
+
+    ROS_INFO_STREAM("Time taken for statistical outlier removal: " << 
+      duration_cast<milliseconds>(statisticalEnd - statisticalStart).count() << " ms");
+    
+    ROS_INFO_STREAM("Time taken for pcl to pc2 casting: " << 
+      duration_cast<milliseconds>(pclConversionStop - pclConversionStart).count() << " ms");
+    
+    ROS_INFO_STREAM("Time taken by pointcloud transform: " << 
+      duration_cast<milliseconds>(transformStop - transformStart).count() << " ms");
+    
+    ROS_INFO_STREAM("Time taken by map input: " << 
+      duration_cast<milliseconds>(mapInputStop - mapInputStart).count() << " ms");
+    
+    ROS_INFO_STREAM("ElevationMap processed a point cloud of " << static_cast<int>(pointCloud->size()) <<
+                  " points in " << duration_cast<milliseconds>(callbackStop - callbackStart).count() << " ms \n");
+  }
 }
 
 void ElevationMappingNode::updatePose(const ros::TimerEvent&) {

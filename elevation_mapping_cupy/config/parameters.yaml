@@ -1,8 +1,27 @@
-#### Basic parameters ########
+#### Random sampling filter ########
 sample_size: 50000
-voxel_size: 0.04
+enable_random_sampling: false
+
+#### Voxel filter ########
+voxel_size: 0.08
+enable_voxel_filtering: false
+
+#### Statistical filtering ########
+meanK: 20
+stdDevK: 1.0
+enable_statistical_filtering: false
+
+#### Legs filtering ########
+legs_safety_region: 100
+leg_pointcloud_topics: ['/points_d405']
+depth_camera_info: '/realsense/down/camera/depth/camera_info'
+
+#### Print how much each function takes ########
+print_routines_runtimes: true
+
+#### Mapping parameters ########
 resolution: 0.02                                # resolution in m.
-map_length: 5                                  # map's size in m.
+map_length: 3                                  # map's size in m.
 sensor_noise_factor: 0.05                       # point's noise is sensor_noise_factor*z^2 (z is distance from sensor).
 mahalanobis_thresh: 2.0                         # points outside this distance is outlier.
 outlier_variance: 0.01                          # if point is outlier, add this value to the cell.
@@ -20,18 +39,18 @@ position_noise_thresh: 0.01                     # if the position change is bigg
 orientation_noise_thresh: 0.01                  # if the orientation change is bigger than this value, the drift compensation happens.
 position_lowpass_alpha: 0.2                     # lowpass filter alpha used for detecting movements.
 orientation_lowpass_alpha: 0.2                  # lowpass filter alpha used for detecting movements.
-min_valid_distance: 0.5                         # points with shorter distance will be filtered out.
+min_valid_distance: 0.3                         # points with shorter distance will be filtered out.
 max_height_range: 1.0                           # points higher than this value from sensor will be filtered out to disable ceiling.
 ramped_height_range_a: 0.3                      # if z > max(d - ramped_height_range_b, 0) * ramped_height_range_a + ramped_height_range_c, reject.
 ramped_height_range_b: 1.0                      # if z > max(d - ramped_height_range_b, 0) * ramped_height_range_a + ramped_height_range_c, reject.
 ramped_height_range_c: 0.2                      # if z > max(d - ramped_height_range_b, 0) * ramped_height_range_a + ramped_height_range_c, reject.
-update_variance_fps: 60.0                      # fps for updating variance.
-update_pose_fps: 60.0                          # fps for updating pose and shift the center of map.
+update_variance_fps: 30.0                      # fps for updating variance.
+update_pose_fps: 200.0                          # fps for updating pose and shift the center of map.
 time_interval: 0.1                              # Time layer is updated with this interval.
-map_acquire_fps: 60.0                          # Raw map is fetched from GPU memory in this fps.
+map_acquire_fps: 5.0                          # Raw map is fetched from GPU memory in this fps.
 publish_statistics_fps: 1.0                     # Publish statistics topic in this fps.
 
-max_ray_length: 3.0                             # maximum length for ray tracing.
+max_ray_length: 10.0                             # maximum length for ray tracing.
 cleanup_step: 0.1                               # subtitute this value from validity layer at visibiltiy cleanup.
 cleanup_cos_thresh: 0.1                         # subtitute this value from validity layer at visibiltiy cleanup.
 
@@ -47,10 +66,8 @@ base_frame: 'base'                              # The robot's base frame. This f
 corrected_map_frame: 'corrected_odom'
 
 #### Feature toggles ########
-enable_edge_sharpen: true
-enable_random_sampling: true
-enable_voxel_filtering: false
-enable_visibility_cleanup: true
+enable_edge_sharpen: false
+enable_visibility_cleanup: false
 enable_drift_compensation: true
 enable_overlap_clearance: false
 enable_pointcloud_publishing: false
@@ -58,7 +75,7 @@ enable_drift_corrected_TF_publishing: false
 enable_normal_color: false                      # If true, the map contains 'color' layer corresponding to normal. Add 'color' layer to the publishers setting if you want to visualize.
 
 #### Traversability filter ########
-use_chainer: true                              # Use chainer as a backend of traversability filter or pytorch. If false, it uses pytorch. pytorch requires ~2GB more GPU memory compared to chainer but runs faster.
+use_chainer: false                              # Use chainer as a backend of traversability filter or pytorch. If false, it uses pytorch. pytorch requires ~2GB more GPU memory compared to chainer but runs faster.
 weight_file: '$(rospack find elevation_mapping_cupy)/config/weights.dat'               # Weight file for traversability filter
 
 #### Upper bound ########
@@ -82,19 +99,19 @@ pointcloud_topics: ['/depth_camera_front/depth/color/points',
 #   basic_layers:         # basic_layers for valid cell computation (e.g. Rviz): Choose a subset of `layers`.
 #   fps:                  # Publish rate. Use smaller value than `map_acquire_fps`.
 publishers:
-  elevation_map_raw:
-    layers: ['elevation', 'traversability', 'variance']
+  elevation_map_raw3:
+    layers: ['elevation', 'traversability']
     basic_layers: ['elevation', 'traversability']
-    fps: 60.0
-  elevation_map_filter:
-    layers: ['min_filter', 'smooth', 'inpaint', 'upper_bound']
-    basic_layers: ['min_filter']
-    fps: 60.0
+    fps: 30.0
+  elevation_map_filter3:
+    layers: ['min_filter', 'smooth', 'inpaint', 'upper_bound', 'median_filter', 'closing_filter'] 
+    basic_layers: ['min_filter', 'median_filter', 'closing_filter']
+    fps: 30.0
 
 #### Initializer ########
 initialize_method: 'nearest'                                         # Choose one from 'nearest', 'linear', 'cubic'
 initialize_frame_id: ['rf_foot', 'lf_foot', 'rf_foot', 'lf_foot']   # One tf (like ['footprint'] ) initializes a square around it.
-initialize_tf_offset: [-0.02, -0.02, -0.02, -0.02]                          # z direction. Should be same number as initialize_frame_id.
+initialize_tf_offset: [0.0, 0.0, 0.0, 0.0]                          # z direction. Should be same number as initialize_frame_id.
 dilation_size_initialize: 5                                         # dilation size after the init.
 initialize_tf_grid_size: 0.4                                        # This is not used if number of tf is more than 3.
-use_initializer_at_start: false                                      # Use initializer when the node starts.
+use_initializer_at_start: true                                      # Use initializer when the node starts.
