@@ -252,7 +252,7 @@ void ElevationMappingNode::filterLegsFromPointcloud(pcl::PCLPointCloud2::Ptr clo
   tf::StampedTransform transformationRFToDepthCamera;
   tf::StampedTransform transformationLFLWLToDepthCamera;
   tf::StampedTransform transformationRFLWLToDepthCamera;
-  std::string depthCameraFrame = "realsense/down/camera_color_optical_frame";
+  std::string depthCameraFrame = "realsense/down/camera_depth_optical_frame";
 
   try {
     transformListener_.waitForTransform(depthCameraFrame, "lf_foot", timeStamp, ros::Duration(1.0));
@@ -363,10 +363,6 @@ void ElevationMappingNode::filterLegsFromPointcloud(pcl::PCLPointCloud2::Ptr clo
     }
   }
 
-  ROS_INFO_STREAM("Number of inputs: " << projectedPointcloudPoints.size());
-  ROS_INFO_STREAM("Number of outliers: " << outliers->indices.size());
-  ROS_INFO_STREAM("Header: " << cloud->header);
-  
   // Remove outliers
   pcl::ExtractIndices<pcl::PCLPointCloud2> extract;
   extract.setInputCloud(cloud);
